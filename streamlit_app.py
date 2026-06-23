@@ -1,96 +1,70 @@
 import streamlit as st
 st.set_page_config(page_title="Gridlock AI Command Center", layout="wide", page_icon="🚦")
 
-import os
-import sys
-import io
+import os, sys, io, traceback
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-import tempfile
+import tempfile, subprocess, tarfile, shutil, ctypes, logging
 from datetime import datetime
-import subprocess
-import tarfile
-import shutil
-import ctypes
-import logging
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-_CV2_FIXED = False
-def _ensure_cv2():
-    global _CV2_FIXED
-    if _CV2_FIXED:
-        if "cv2" in sys.modules: del sys.modules["cv2"]
-        try:
-            import cv2 as _cv2
-            return _cv2, True
-        except Exception:
-            return None, False
-    def _try_import():
-        if "cv2" in sys.modules: del sys.modules["cv2"]
-        try:
-            import cv2 as _cv2
-            return _cv2, True
-        except Exception:
-            return None, False
-    def _extract_so(lib_dir):
-        tarball = os.path.join(Path(__file__).parent, "streamlit_app_files", "glib_libs.tar.gz")
-        if not os.path.exists(tarball):
-            return False
-        if os.path.isdir(lib_dir) and os.listdir(lib_dir):
-            return True
-        with tarfile.open(tarball, "r:gz") as tar:
-            tar.extractall(lib_dir)
-        for fname in os.listdir(lib_dir):
-            fpath = os.path.join(lib_dir, fname)
-            base = fname.rsplit(".", 2)[0]
-            if ".so.0" in fname and not fname.endswith(".so.0"):
-                simple = base.rsplit(".", 1)[0] if "." in base else base
-                link = os.path.join(lib_dir, simple + ".so.0")
-                if not os.path.exists(link):
-                    try: os.symlink(fname, link)
-                    except: shutil.copy2(fpath, link)
-        return True
-    cv2, ok = _try_import()
-    if ok:
-        _CV2_FIXED = True
-        return cv2, True
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "opencv-python-headless", "--quiet", "--force-reinstall", "--no-deps"],
-        capture_output=True, timeout=120
-    )
-    cv2, ok = _try_import()
-    if ok:
-        _CV2_FIXED = True
-        return cv2, True
-    lib_dir = os.path.join(tempfile.gettempdir(), "glib_so")
-    if not _extract_so(lib_dir):
-        return None, False
-    os.environ["LD_LIBRARY_PATH"] = lib_dir + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
-    for soname in ["libglib-2.0.so.0", "libgthread-2.0.so.0"]:
-        so_path = os.path.join(lib_dir, soname)
-        for ver in ["", ".8000.0"]:
-            p = so_path + ver if ver else so_path
-            if os.path.exists(p):
-                try:
-                    ctypes.CDLL(os.path.realpath(p), ctypes.RTLD_GLOBAL)
-                except Exception:
-                    pass
-                break
-    for _ in range(3):
-        cv2, ok = _try_import()
-        if ok:
-            _CV2_FIXED = True
-            return cv2, True
-    return None, False
-
 try:
-    cv2, _HAS_CV2 = _ensure_cv2()
-except Exception as e:
-    logger.warning("_ensure_cv2 crashed: %s", e)
-    cv2 = None
-    _HAS_CV2 = False
+    subprocess.run([sys.executable, "-m", "pip", "install", "opencv-python-headless", "--quiet", "--force-reinstall", "--no-deps"], capture_output=True, timeout=60)
+except Exception:
+    pass
+
+_HAS_CV2 = False
+cv2 = None
+for _ in range(3):
+    if "cv2" in sys.modules: del sys.modules["cv2"]
+    try:
+        import cv2 as _cv2
+        cv2, _HAS_CV2 = _cv2, True
+        break
+    except Exception:
+        continue
+
+if not _HAS_CV2:
+    tarball = os.path.join(Path(__file__).parent, "streamlit_app_files", "glib_libs.tar.gz")
+    lib_dir = os.path.join(tempfile.gettempdir(), "glib_so")
+    if os.path.exists(tarball) and (not os.path.isdir(lib_dir) or not os.listdir(lib_dir)):
+        try:
+            os.makedirs(lib_dir, exist_ok=True)
+            with tarfile.open(tarball, "r:gz") as tar:
+                tar.extractall(lib_dir)
+            for fname in os.listdir(lib_dir):
+                fpath = os.path.join(lib_dir, fname)
+                base = fname.rsplit(".", 2)[0]
+                if ".so.0" in fname and not fname.endswith(".so.0"):
+                    simple = base.rsplit(".", 1)[0] if "." in base else base
+                    link = os.path.join(lib_dir, simple + ".so.0")
+                    if not os.path.exists(link):
+                        try: os.symlink(fname, link)
+                        except: shutil.copy2(fpath, link)
+        except Exception:
+            pass
+    if os.path.isdir(lib_dir):
+        os.environ["LD_LIBRARY_PATH"] = lib_dir + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+        for soname in ["libglib-2.0.so.0", "libgthread-2.0.so.0"]:
+            so_path = os.path.join(lib_dir, soname)
+            for ver in ["", ".8000.0"]:
+                p = (so_path + ver) if ver else so_path
+                if os.path.exists(p):
+                    try:
+                        ctypes.CDLL(os.path.realpath(p), ctypes.RTLD_GLOBAL)
+                    except Exception:
+                        pass
+                    break
+        for _ in range(3):
+            if "cv2" in sys.modules: del sys.modules["cv2"]
+            try:
+                import cv2 as _cv2
+                cv2, _HAS_CV2 = _cv2, True
+                break
+            except Exception:
+                continue
 
 try:
     from PIL import Image, ImageDraw
@@ -130,27 +104,19 @@ except Exception as e:
     pipeline = None
     logger.warning("Pipeline not loaded: %s", e)
 
-def safe_call(method, *a, **kw):
-    if pipeline is None:
-        return None
-    try:
-        return getattr(pipeline, method)(*a, **kw)
-    except Exception as e:
-        logger.warning("%s failed: %s", method, e)
-        return None
-
 _pipeline_active = pipeline is not None
 
-st.sidebar.title("Gridlock AI Command Center")
-st.sidebar.selectbox("Camera", ["All", "CAM_001", "CAM_002"])
-st.sidebar.checkbox("Auto-Refresh (Live Feed)", value=False)
+try:
+    st.sidebar.title("Gridlock AI Command Center")
+    st.sidebar.selectbox("Camera", ["All", "CAM_001", "CAM_002"])
+    st.sidebar.checkbox("Auto-Refresh (Live Feed)", value=False)
 
-if not _pipeline_active:
-    st.sidebar.error("Pipeline unavailable: " + (_load_error or "unknown"))
-    st.sidebar.info("Run locally via Docker:\n`docker build -f Docker/Dockerfile -t gridlock-ai . && docker run -p 8000:8501 gridlock-ai`")
+    if not _pipeline_active:
+        st.sidebar.error("Pipeline unavailable: " + (_load_error or "unknown"))
+        st.sidebar.info("Run locally via Docker:\n`docker build -f Docker/Dockerfile -t gridlock-ai . && docker run -p 8000:8501 gridlock-ai`")
 
-st.title("Traffic Enforcement & Risk Intelligence Platform")
-st.markdown("Real-time monitoring, AI predictive analytics, and automated ticketing engine.")
+    st.title("Traffic Enforcement & Risk Intelligence Platform")
+    st.markdown("Real-time monitoring, AI predictive analytics, and automated ticketing engine.")
 
 t1, t2, t3, t4, t5, t6, t7 = st.tabs([
     "Live Feed", "Risk Map", "Hotspot Analysis", "Predicted Violations",
@@ -317,3 +283,8 @@ with t7:
         st.info("No violations match your search criteria.")
     else:
         st.info("Pipeline not connected — run locally via Docker.")
+
+except Exception as _app_err:
+    st.error(f"App error: {_app_err}")
+    with st.expander("Traceback"):
+        st.code(traceback.format_exc())
