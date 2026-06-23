@@ -22,6 +22,7 @@ class StandalonePipeline:
         self.risk_engine = None
         self.forecaster = None
         self.SessionLocal = None
+        self._frame_counter = 0
 
     def _set_db_url(self):
         os.environ.setdefault("DATABASE_URL", f"sqlite:///./{self.db_path}")
@@ -54,17 +55,8 @@ class StandalonePipeline:
             logger.warning("Pipeline load failed (non-fatal for dashboard): %s", e)
             return False
 
-    def __init__(self, db_path: str = "gridlock.db"):
-        self.db_path = db_path
-        self._set_db_url()
-        self._loaded = False
-        self.pipeline = None
-        self.risk_engine = None
-        self.forecaster = None
-        self.SessionLocal = None
-        self._frame_counter = 0
-
-    def _set_db_url(self):
+    def process_image(self, image_bytes: bytes, camera_id: str = "CAM_001") -> Dict[str, Any]:
+        if not self._loaded and not self.load():
             return {"processed_violations": 0, "events": [], "junction_risk": {"score": 0.0, "tier": "LOW"}}
         try:
             pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")

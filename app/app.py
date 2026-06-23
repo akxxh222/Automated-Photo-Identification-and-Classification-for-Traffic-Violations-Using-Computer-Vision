@@ -33,6 +33,7 @@ if "last_violation_time" not in st.session_state:
 st.sidebar.title("Gridlock AI Filters")
 selected_cam = st.sidebar.selectbox("Camera Selector", ["All", "CAM_001", "CAM_002"])
 date_range = st.sidebar.date_input("Date Range", [datetime.today() - timedelta(days=1), datetime.today()])
+auto_refresh = st.sidebar.checkbox("Auto-Refresh (Live Feed)", value=False)
 st.title("Traffic Enforcement & Risk Intelligence Platform")
 st.markdown("Real-time monitoring, AI predictive analytics, and automated ticketing engine.")
 
