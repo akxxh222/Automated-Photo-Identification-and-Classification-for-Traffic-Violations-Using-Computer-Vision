@@ -10,9 +10,15 @@ from streamlit_folium import st_folium
 import altair as alt
 from datetime import datetime, timedelta
 import time
-import cv2
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import logging
+
+_HAS_CV2 = False
+try:
+    import cv2
+    _HAS_CV2 = True
+except ImportError:
+    cv2 = None
 
 from pipeline_runner import get_pipeline
 
@@ -83,55 +89,58 @@ with t1:
                     st.error(f"Pipeline Error: {e}")
 
     elif mode == "Upload Video":
-        uploaded_vid = st.file_uploader("Choose a video...", type=["mp4", "avi", "mov", "mkv"])
-        if uploaded_vid is not None:
-            uploaded_vid.seek(0)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                tmp.write(uploaded_vid.read())
-                tmp_path = tmp.name
+        if not _HAS_CV2:
+            st.warning("OpenCV (cv2) not available on this server. Video upload disabled.")
+        else:
+            uploaded_vid = st.file_uploader("Choose a video...", type=["mp4", "avi", "mov", "mkv"])
+            if uploaded_vid is not None:
+                uploaded_vid.seek(0)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                    tmp.write(uploaded_vid.read())
+                    tmp_path = tmp.name
 
-            cap = cv2.VideoCapture(tmp_path)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            duration = total_frames / fps if fps > 0 else 0
+                cap = cv2.VideoCapture(tmp_path)
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                duration = total_frames / fps if fps > 0 else 0
 
-            st.info(f"Video: {total_frames} frames, {fps:.1f} fps, {duration:.1f}s")
+                st.info(f"Video: {total_frames} frames, {fps:.1f} fps, {duration:.1f}s")
 
-            sample_every = max(1, total_frames // 10)
-            all_violations = []
-            frame_idx = 0
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+                sample_every = max(1, total_frames // 10)
+                all_violations = []
+                frame_idx = 0
+                progress_bar = st.progress(0)
+                status_text = st.empty()
 
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                if frame_idx % sample_every == 0:
-                    _, buffer = cv2.imencode(".jpg", frame)
-                    img_bytes = buffer.tobytes()
-                    try:
-                        result = pipeline.process_image(img_bytes, camera_id="CAM_001")
-                        for ev in result.get("events", []):
-                            all_violations.append({
-                                "frame": frame_idx,
-                                "type": ev.get("violation_type", "N/A"),
-                                "confidence": ev.get("confidence", 0),
-                                "plate": ev.get("plate_text", "N/A"),
-                            })
-                    except Exception:
-                        pass
-                    status_text.text(f"Processing frame {frame_idx}/{total_frames}")
-                frame_idx += 1
-                progress_bar.progress(min(frame_idx / total_frames, 1.0))
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    if frame_idx % sample_every == 0:
+                        _, buffer = cv2.imencode(".jpg", frame)
+                        img_bytes = buffer.tobytes()
+                        try:
+                            result = pipeline.process_image(img_bytes, camera_id="CAM_001")
+                            for ev in result.get("events", []):
+                                all_violations.append({
+                                    "frame": frame_idx,
+                                    "type": ev.get("violation_type", "N/A"),
+                                    "confidence": ev.get("confidence", 0),
+                                    "plate": ev.get("plate_text", "N/A"),
+                                })
+                        except Exception:
+                            pass
+                        status_text.text(f"Processing frame {frame_idx}/{total_frames}")
+                    frame_idx += 1
+                    progress_bar.progress(min(frame_idx / total_frames, 1.0))
 
-            cap.release()
-            os.unlink(tmp_path)
+                cap.release()
+                os.unlink(tmp_path)
 
-            st.success(f"Processed {frame_idx} frames — {len(all_violations)} violation(s) found")
-            if all_violations:
-                df_vid = pd.DataFrame(all_violations)
-                st.dataframe(df_vid, hide_index=True, use_container_width=True)
+                st.success(f"Processed {frame_idx} frames — {len(all_violations)} violation(s) found")
+                if all_violations:
+                    df_vid = pd.DataFrame(all_violations)
+                    st.dataframe(df_vid, hide_index=True, use_container_width=True)
 
     else:
         c1, c2 = st.columns([2, 1])
@@ -139,10 +148,12 @@ with t1:
         with c1:
             st.markdown("**Simulated Live Video**")
             st.session_state.frame_counter += 1
-            dummy_frame = np.random.randint(50, 200, (360, 640, 3), dtype=np.uint8)
-            cv2.putText(dummy_frame, f"LIVE - {datetime.now().strftime('%H:%M:%S')}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            cv2.putText(dummy_frame, f"Frame #{st.session_state.frame_counter}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
-            st.image(dummy_frame, channels="BGR", use_container_width=True)
+            ts = datetime.now().strftime('%H:%M:%S')
+            dummy_img = Image.new("RGB", (640, 360), (25, 30, 35))
+            draw = ImageDraw.Draw(dummy_img)
+            draw.text((10, 10), f"LIVE - {ts}", fill=(255, 255, 255))
+            draw.text((10, 50), f"Frame #{st.session_state.frame_counter}", fill=(200, 200, 200))
+            st.image(dummy_img, use_container_width=True)
 
         with c2:
             st.markdown("**Real-Time Violation Log**")
