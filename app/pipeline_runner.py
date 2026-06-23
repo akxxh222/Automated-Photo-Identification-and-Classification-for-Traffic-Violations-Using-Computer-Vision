@@ -1,14 +1,10 @@
 import io
 import os
-import random
 import logging
 from datetime import date, datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
-
-_DEMO_PLATES = ["KA01AB1234", "KA02CD5678", "KA03EF9012", "KA04GH3456", "KA05IJ7890"]
-_DEMO_TYPES = ["helmet", "triple_riding", "wrong_side", "red_light", "illegal_parking", "seatbelt"]
 
 
 class StandalonePipeline:
@@ -23,7 +19,6 @@ class StandalonePipeline:
         self.forecaster = None
         self.SessionLocal = None
         self._frame_counter = 0
-        self._demo_count = 0
 
     def _set_db_url(self):
         os.environ.setdefault("DATABASE_URL", f"sqlite:///./{self.db_path}")
@@ -56,22 +51,9 @@ class StandalonePipeline:
             logger.warning("Pipeline load failed (non-fatal for dashboard): %s", e)
             return False
 
-    def _demo_event(self) -> Dict[str, Any]:
-        self._demo_count += 1
-        vtype = random.choice(_DEMO_TYPES)
-        return {
-            "violation_type": vtype,
-            "confidence": random.uniform(0.65, 0.95),
-            "plate_text": random.choice(_DEMO_PLATES) if random.random() > 0.3 else "UNKNOWN",
-            "fine_amount": random.choice([500, 1000, 1500, 2000]),
-            "evidence_path": None,
-            "summary": vtype.replace("_", " ").title(),
-        }
-
     def process_image(self, image_bytes: bytes, camera_id: str = "CAM_001") -> Dict[str, Any]:
         if not self._loaded and not self.load():
-            events = [self._demo_event() for _ in range(random.randint(1, 3))]
-            return {"processed_violations": len(events), "events": events, "junction_risk": {"score": random.uniform(2.0, 8.0), "tier": random.choice(["LOW", "MEDIUM", "HIGH", "CRITICAL"])}}
+            return {"processed_violations": 0, "events": [], "junction_risk": {"score": 0.0, "tier": "LOW"}}
         try:
             from PIL import Image
             import numpy as np
@@ -134,15 +116,7 @@ class StandalonePipeline:
 
     def query_violations(self, plate: Optional[str] = None, violation_type: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
         if not self._loaded and not self.load():
-            return [{
-                "id": i, "timestamp": (datetime.now() - timedelta(minutes=i*15)).isoformat(),
-                "plate_text": random.choice(_DEMO_PLATES), "plate_confidence": random.uniform(0.7, 0.99),
-                "violation_type": random.choice(_DEMO_TYPES), "violation_confidence": random.uniform(0.65, 0.95),
-                "camera_id": random.choice(["CAM_001", "CAM_002"]),
-                "junction_id": f"J00{random.randint(1,2)}",
-                "latitude": 12.97 + random.uniform(-0.02, 0.02), "longitude": 77.59 + random.uniform(-0.02, 0.02),
-                "fine_amount": random.choice([500, 1000, 1500, 2000]), "is_valid_plate": random.random() > 0.3,
-            } for i in range(min(limit, 12))]
+            return []
         try:
             db = self.SessionLocal()
             try:
@@ -177,7 +151,7 @@ class StandalonePipeline:
 
     def query_risk(self, junction_id: str) -> Dict[str, Any]:
         if not self._loaded and not self.load():
-            return {"junction_id": junction_id, "risk_score": random.uniform(2.0, 8.5), "risk_tier": random.choice(["LOW", "MEDIUM", "HIGH", "CRITICAL"]), "breakdown": {}}
+            return {"junction_id": junction_id, "risk_score": 0.0, "risk_tier": "LOW", "breakdown": {}}
         try:
             db = self.SessionLocal()
             try:
@@ -187,11 +161,11 @@ class StandalonePipeline:
                 db.close()
         except Exception as e:
             logger.error("query_risk error: %s", e)
-            return {"junction_id": junction_id, "risk_score": random.uniform(2.0, 8.5), "risk_tier": random.choice(["LOW", "MEDIUM", "HIGH", "CRITICAL"]), "breakdown": {}}
+            return {"junction_id": junction_id, "risk_score": 0.0, "risk_tier": "LOW", "breakdown": {}}
 
     def query_repeat_offenders(self) -> List[Dict[str, Any]]:
         if not self._loaded and not self.load():
-            return [{"plate_text": p, "violation_count": random.randint(2, 8), "risk_tier": random.choice(["HIGH RISK", "MEDIUM RISK"]), "last_seen": (datetime.now() - timedelta(hours=random.randint(1, 48))).isoformat()} for p in _DEMO_PLATES[:3]]
+            return []
         try:
             db = self.SessionLocal()
             try:
@@ -205,7 +179,7 @@ class StandalonePipeline:
 
     def query_hotspots(self) -> List[Dict[str, Any]]:
         if not self._loaded and not self.load():
-            return [{"cluster_id": i, "centroid": {"lat": 12.97 + random.uniform(-0.01, 0.01), "lon": 77.59 + random.uniform(-0.01, 0.01)}, "violation_count": random.randint(3, 15), "dominant_violation": random.choice(_DEMO_TYPES)} for i in range(1, 4)]
+            return []
         try:
             db = self.SessionLocal()
             try:
@@ -219,7 +193,7 @@ class StandalonePipeline:
 
     def query_enforcement_plan(self) -> Dict[str, Any]:
         if not self._loaded and not self.load():
-            return {"date": date.today().isoformat(), "total_officers_needed": random.randint(5, 15), "recommended_allocations": [{"junction": f"J00{i}", "officers": random.randint(2, 6), "priority": p} for i, p in enumerate(["HIGH", "MEDIUM", "LOW"], 1)]}
+            return {"message": "Plan not generated yet"}
         try:
             db = self.SessionLocal()
             try:
@@ -234,9 +208,7 @@ class StandalonePipeline:
 
     def query_forecast(self, junction_id: str, hours: int = 24) -> Dict[str, Any]:
         if not self._loaded and not self.load():
-            base = datetime.now().replace(minute=0, second=0, microsecond=0)
-            forecast = [{"timestamp": (base + timedelta(hours=h)).isoformat(), "predicted_violations": max(0, int(random.gauss(8, 3))), "confidence_interval": {"lower": max(0, int(random.gauss(5, 2))), "upper": int(random.gauss(12, 4))}, "event_flag": "High traffic expected" if random.random() > 0.8 else None} for h in range(hours)]
-            return {"junction_id": junction_id, "hours": hours, "forecast": forecast, "model_status": "demo", "metrics": {}}
+            return {"junction_id": junction_id, "hours": hours, "forecast": [], "model_status": "unavailable", "metrics": {}}
 
         try:
             forecast = self.forecaster.predict(junction_id, hours=hours)

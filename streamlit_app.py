@@ -41,6 +41,12 @@ try:
 except ImportError:
     np = None
 
+try:
+    from scripts.download_models import main as _download_models
+    _download_models()
+except Exception as e:
+    logger.warning("Model download failed: %s", e)
+
 pipeline = None
 _load_error = None
 try:
@@ -62,11 +68,7 @@ def safe_call(method, *a, **kw):
 st.sidebar.title("Gridlock AI Filters")
 st.sidebar.selectbox("Camera", ["All", "CAM_001", "CAM_002"])
 st.sidebar.checkbox("Auto-Refresh (Live Feed)", value=False)
-with st.sidebar.expander("Debug Info"):
-    st.write(f"Pipeline loaded: {pipeline is not None and pipeline._loaded}")
-    st.write(f"Pipeline object: {pipeline}")
-    if _load_error:
-        st.error(f"Load error: {_load_error}")
+
 st.title("Traffic Enforcement & Risk Intelligence Platform")
 st.markdown("Real-time monitoring, AI predictive analytics, and automated ticketing engine.")
 
