@@ -146,7 +146,9 @@ with t1:
                 st.image(Image.open(io.BytesIO(data)), caption="Uploaded", use_container_width=True)
             with st.spinner("Analyzing..."):
                 r = safe_call("process_image", data, camera_id="CAM_001")
-                if r and r.get("events"):
+                if r is not None and r.get("error"):
+                    st.error(f"Pipeline error: {r['error']}")
+                elif r and r.get("events"):
                     st.success(f"Detected {len(r['events'])} violation(s)")
                     if _HAS_PD:
                         st.dataframe(pd.DataFrame([
