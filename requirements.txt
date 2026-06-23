@@ -1,1 +1,8 @@
 streamlit
+opencv-python-headless
+Pillow
+pandas
+folium
+streamlit-folium
+altair
+requests
