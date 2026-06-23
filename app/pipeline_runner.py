@@ -4,9 +4,13 @@ import logging
 from datetime import date
 from typing import Optional, List, Dict, Any
 
-import cv2
 import numpy as np
 from PIL import Image
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 
 logger = logging.getLogger(__name__)
 
