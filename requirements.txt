@@ -13,5 +13,4 @@ fastapi
 uvicorn
 pydantic
 python-multipart
-pyyaml
-joblib
+opencv-python-headless>=4.9.0
