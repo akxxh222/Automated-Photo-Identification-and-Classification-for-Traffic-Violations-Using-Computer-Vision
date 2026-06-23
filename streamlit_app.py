@@ -29,44 +29,43 @@ def _ensure_cv2():
             return _cv2, True
         except Exception:
             return None, False
-    cv2, ok = _try_import()
-    if ok: return cv2, True
-    for _ in range(2):
-        if "cv2" in sys.modules: del sys.modules["cv2"]
-        try:
-            import cv2 as _cv2
-            return _cv2, True
-        except Exception:
-            break
-    tarball = os.path.join(Path(__file__).parent, "streamlit_app_files", "glib_libs.tar.gz")
-    if os.path.exists(tarball):
-        lib_dir = os.path.join(tempfile.gettempdir(), "glib_so")
-        if not os.path.isdir(lib_dir) or not os.listdir(lib_dir):
-            with tarfile.open(tarball, "r:gz") as tar:
-                tar.extractall(lib_dir)
+    def _extract_so(lib_dir):
+        tarball = os.path.join(Path(__file__).parent, "streamlit_app_files", "glib_libs.tar.gz")
+        if not os.path.exists(tarball):
+            return False
+        if os.path.isdir(lib_dir) and os.listdir(lib_dir):
+            return True
+        with tarfile.open(tarball, "r:gz") as tar:
+            tar.extractall(lib_dir)
         for fname in os.listdir(lib_dir):
             fpath = os.path.join(lib_dir, fname)
             base = fname.rsplit(".", 2)[0]
-            if base.endswith(".so.0") and not base.endswith(".0"):
-                continue
             if ".so.0" in fname and not fname.endswith(".so.0"):
                 simple = base.rsplit(".", 1)[0] if "." in base else base
                 link = os.path.join(lib_dir, simple + ".so.0")
                 if not os.path.exists(link):
                     try: os.symlink(fname, link)
                     except: shutil.copy2(fpath, link)
-        os.environ["LD_LIBRARY_PATH"] = lib_dir + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
-        glib = os.path.join(lib_dir, "libglib-2.0.so.0")
-        if os.path.exists(glib):
-            try: ctypes.CDLL(glib, ctypes.RTLD_GLOBAL)
-            except: pass
-        for _ in range(2):
-            if "cv2" in sys.modules: del sys.modules["cv2"]
-            try:
-                import cv2 as _cv2
-                return _cv2, True
-            except Exception:
+        return True
+    cv2, ok = _try_import()
+    if ok: return cv2, True
+    lib_dir = os.path.join(tempfile.gettempdir(), "glib_so")
+    if not _extract_so(lib_dir):
+        return None, False
+    os.environ["LD_LIBRARY_PATH"] = lib_dir + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+    for soname in ["libglib-2.0.so.0", "libgthread-2.0.so.0"]:
+        so_path = os.path.join(lib_dir, soname)
+        for ver in ["", ".8000.0"]:
+            p = so_path + ver if ver else so_path
+            if os.path.exists(p):
+                try:
+                    ctypes.CDLL(os.path.realpath(p), ctypes.RTLD_GLOBAL)
+                except Exception:
+                    pass
                 break
+    for _ in range(3):
+        cv2, ok = _try_import()
+        if ok: return cv2, True
     return None, False
 
 cv2, _HAS_CV2 = _ensure_cv2()
