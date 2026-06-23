@@ -1,15 +1,31 @@
 import streamlit as st
-st.set_page_config(page_title="Gridlock AI", layout="wide")
+st.set_page_config(page_title="Gridlock AI Test", layout="wide")
+st.title("Gridlock AI")
+st.write("Booting...")
 
-import os, sys, traceback
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
+import sys, os
+os.environ["STREAMLIT_TEST"] = "1"
+st.write(f"Python: {sys.version}")
+st.write(f"CWD: {os.getcwd()}")
 
-st.title("Test")
-st.write("If you see this, basic Streamlit works.")
+try:
+    from PIL import Image
+    st.write("PIL: OK")
+except Exception as e:
+    st.write(f"PIL: {e}")
 
 try:
     import cv2
-    st.write("cv2 imported OK")
+    st.write(f"cv2: OK (version {cv2.__version__})")
 except Exception as e:
-    st.write(f"cv2 import failed: {e}")
+    st.write(f"cv2: FAILED - {e}")
+    import traceback
+    st.code(traceback.format_exc())
+
+try:
+    import ultralytics
+    st.write(f"ultralytics: OK (version {ultralytics.__version__})")
+except Exception as e:
+    st.write(f"ultralytics: {e}")
+
+st.write("App ready!")
