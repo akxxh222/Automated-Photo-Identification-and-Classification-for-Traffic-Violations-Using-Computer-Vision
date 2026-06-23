@@ -41,12 +41,6 @@ try:
 except ImportError:
     np = None
 
-import subprocess
-try:
-    subprocess.run(["apt-get", "install", "-y", "libgl1", "libglib2.0-0"], capture_output=True, timeout=30)
-except Exception:
-    pass
-
 try:
     from scripts.download_models import main as _download_models
     _download_models()
