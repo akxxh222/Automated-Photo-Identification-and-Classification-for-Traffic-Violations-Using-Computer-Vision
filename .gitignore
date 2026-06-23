@@ -1,0 +1,61 @@
+# Model weights (download via scripts/download_models.py)
+models/*.pt
+models/*.pth
+models/*.pkl
+models/*.joblib
+models/pretrained/
+
+# Dataset files (download separately)
+data/
+datasets/
+
+# Database
+*.db
+*.sqlite3
+gridlock.db
+
+# Evidence / output
+evidence_store/
+evidence/
+evidence_pdfs/
+generated_evidence/
+results/
+runs/
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+logs/
+temp/
+tmp/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Large artifacts
+artifacts/
+*.zip
+*.tar.gz
+
+# Docker
+Docker/.dockerignore

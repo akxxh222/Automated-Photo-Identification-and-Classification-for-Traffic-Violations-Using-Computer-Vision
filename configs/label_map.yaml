@@ -1,0 +1,166 @@
+tasks:
+  vehicle:
+    output_dir: data/processed/vehicle
+    sources:
+      - data/raw
+      - data/datasets
+    include_keywords:
+      - vehicle
+      - indian vehicle
+      - tvd
+      - pedestrian
+    canonical_names:
+      - car
+      - truck
+      - bus
+      - two_wheeler
+      - three_wheeler
+      - pedestrian
+      - rider
+      - pillion
+    aliases:
+      car:
+        - car
+        - cars
+        - ambulance
+        - police_vehicle
+        - police vehicle
+        - four_wheeler
+        - four wheeler
+        - vehicle_car
+        - automobile
+      truck:
+        - truck
+        - trucks
+        - lorry
+      bus:
+        - bus
+        - buses
+      two_wheeler:
+        - two_wheeler
+        - two wheeler
+        - bike
+        - bikes
+        - bicycle
+        - motorbike
+        - motorcycle
+        - motorcycles
+        - scooter
+        - scooters
+      three_wheeler:
+        - three_wheeler
+        - three wheeler
+        - auto
+        - auto_rikshaw
+        - auto-rikshaw
+        - auto_rickshaw
+        - auto rickshaw
+        - rickshaw
+      pedestrian:
+        - pedestrian
+        - pedestrians
+        - person
+        - people
+        - '0'
+      rider:
+        - rider
+        - riders
+        - driver
+        - motorcyclist
+        - biker
+        - person_on_bike
+        - person on bike
+      pillion:
+        - pillion
+        - passenger
+        - bike_passenger
+        - bike passenger
+
+  helmet:
+    output_dir: data/processed/helmet
+    sources:
+      - data/raw
+      - data/datasets
+    include_keywords:
+      - helmet
+      - tvd
+    canonical_names:
+      - helmet_on
+      - helmet_off
+    aliases:
+      helmet_on:
+        - helmet
+        - helmet_on
+        - helmet on
+        - with_helmet
+        - with helmet
+        - wearing_helmet
+        - wearing helmet
+        - helmeted
+      helmet_off:
+        - no_helmet
+        - no helmet
+        - without_helmet
+        - without helmet
+        - helmet_off
+        - helmet off
+        - not_wearing_helmet
+        - not wearing helmet
+        - non_helmet
+
+  license_plate:
+    output_dir: data/processed/license_plate
+    sources:
+      - data/raw
+      - data/datasets
+    include_keywords:
+      - license
+      - plate
+    canonical_names:
+      - license_plate
+    aliases:
+      license_plate:
+        - license_plate
+        - license plate
+        - licence_plate
+        - licence plate
+        - number_plate
+        - number plate
+        - plate
+        - car_plate
+
+  triple_riding:
+    output_dir: data/processed/triple_riding
+    sources:
+      - data/raw
+      - data/datasets
+    include_keywords:
+      - triple
+      - triple riding
+      - tvd
+    canonical_names:
+      - single_rider
+      - double_rider
+      - triple_rider
+    aliases:
+      single_rider:
+        - single_rider
+        - single rider
+        - one_rider
+        - one rider
+      double_rider:
+        - double_rider
+        - double rider
+        - two_rider
+        - two rider
+        - two_riders
+        - two riders
+      triple_rider:
+        - triple_rider
+        - triple rider
+        - triple_riding
+        - triple riding
+        - three_rider
+        - three rider
+        - three_riders
+        - three riders

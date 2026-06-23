@@ -1,0 +1,35 @@
+system:
+  log_level: "INFO"
+  inference_target_latency_ms: 40
+
+preprocessing:
+  target_fps: 5
+  img_size: 640
+  clahe_clip_limit: 2.0
+  clahe_tile_grid_size: [8, 8]
+  gamma_correction_threshold: 80
+
+detection:
+  model_path: "models/vehicle_detector.pt"
+  confidence_threshold: 0.25
+  iou_threshold: 0.45
+  classes: [0, 1, 2, 3, 4, 5, 6, 7] # car, truck, bus, two_wheeler, three_wheeler, pedestrian, rider, pillion
+
+tracking:
+  tracker_type: "bytetrack"
+  track_high_thresh: 0.5
+  track_low_thresh: 0.1
+  new_track_thresh: 0.6
+  track_buffer: 30
+
+violations:
+  helmet_model_path: "models/helmet_detector.pt"
+  triple_riding_model_path: "models/triple_riding_detector.pt"
+  plate_model_path: "models/plate_detector.pt"
+  seatbelt_confidence_threshold: 0.5
+  parking_stationary_time_sec: 30
+  parking_displacement_px: 15
+  red_light_debounce_frames: 3
+  wrong_side_cosine_threshold: -0.5
+  deduplication_window_sec: 5
+  ocr_timeout_sec: 5
