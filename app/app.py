@@ -20,10 +20,30 @@ try:
 except ImportError:
     cv2 = None
 
-from pipeline_runner import get_pipeline
-
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+
+_logged_pipeline_warning = False
+
+def get_pipeline():
+    global _logged_pipeline_warning
+    try:
+        from pipeline_runner import get_pipeline as _get_pipeline
+        return _get_pipeline()
+    except Exception as e:
+        if not _logged_pipeline_warning:
+            logger.warning("Pipeline unavailable: %s", e)
+            _logged_pipeline_warning = True
+        return None
+
+def _safe_call(method, *args, **kwargs):
+    if pipeline is None:
+        return None
+    try:
+        return getattr(pipeline, method)(*args, **kwargs)
+    except Exception as e:
+        logger.warning("Pipeline.%s failed: %s", method, e)
+        return None
 
 st.set_page_config(page_title="Gridlock AI Command Center", layout="wide", page_icon="🚦")
 
@@ -63,7 +83,7 @@ with t1:
 
             with st.spinner("Running detection pipeline..."):
                 try:
-                    result = pipeline.process_image(image_bytes, camera_id="CAM_001")
+                    result = _safe_call("process_image", image_bytes, camera_id="CAM_001")
                     st.success(f"Processed: {result['processed_violations']} violation(s) detected")
 
                     if result["events"]:
@@ -120,7 +140,7 @@ with t1:
                         _, buffer = cv2.imencode(".jpg", frame)
                         img_bytes = buffer.tobytes()
                         try:
-                            result = pipeline.process_image(img_bytes, camera_id="CAM_001")
+                            result = _safe_call("process_image", img_bytes, camera_id="CAM_001")
                             for ev in result.get("events", []):
                                 all_violations.append({
                                     "frame": frame_idx,
@@ -157,7 +177,7 @@ with t1:
 
         with c2:
             st.markdown("**Real-Time Violation Log**")
-            violations = pipeline.query_violations(limit=5)
+            violations = _safe_call("query_violations", limit=5)
             now = time.time()
             if violations:
                 st.session_state.violations_cache = violations
@@ -179,12 +199,18 @@ with t2:
     cams = {"CAM_001": [12.9716, 77.5946], "CAM_002": [12.9352, 77.6245]}
 
     for cam, coords in cams.items():
-        risk_data = pipeline.query_risk(f"J{cam[-3:]}")
-        tier = risk_data["risk_tier"]
-        color = {"CRITICAL": "red", "HIGH": "orange", "MEDIUM": "yellow", "LOW": "green"}.get(tier, "gray")
+        risk_data = _safe_call("query_risk", f"J{cam[-3:]}")
+        if risk_data:
+            tier = risk_data.get("risk_tier", "LOW")
+            color = {"CRITICAL": "red", "HIGH": "orange", "MEDIUM": "yellow", "LOW": "green"}.get(tier, "gray")
+            score = risk_data.get("risk_score", 0.0)
+            popup_html = f"<b>Junction:</b> J{cam[-3:]}<br><b>Score:</b> {score:.1f}<br><b>Tier:</b> {tier}"
+        else:
+            color = "gray"
+            popup_html = f"<b>Junction:</b> J{cam[-3:]}<br><b>Status:</b> No data"
         folium.CircleMarker(
             location=coords, radius=10, color=color, fill=True, fill_color=color, fill_opacity=0.7,
-            popup=f"<b>Junction:</b> J{cam[-3:]}<br><b>Score:</b> {risk_data['risk_score']:.1f}<br><b>Tier:</b> {tier}"
+            popup=popup_html
         ).add_to(m)
 
     with c_map:
@@ -199,7 +225,7 @@ with t2:
 
 with t3:
     st.subheader("Violation Density Hotspots (DBSCAN Clusters)")
-    hotspots = pipeline.query_hotspots()
+    hotspots = _safe_call("query_hotspots")
 
     if hotspots:
         col1, col2 = st.columns([2, 1])
@@ -227,7 +253,7 @@ with t4:
     st.subheader("Predictive Analytics (Next 24 Hours)")
     jid = st.selectbox("Select Junction for Forecast", ["J001", "J002"])
 
-    forecast_resp = pipeline.query_forecast(jid, hours=24)
+    forecast_resp = _safe_call("query_forecast", jid, hours=24)
     forecast_data = forecast_resp.get("forecast") if isinstance(forecast_resp, dict) else forecast_resp
 
     if forecast_data:
@@ -252,7 +278,7 @@ with t4:
 
 with t5:
     st.subheader("Repeat Offender Registry")
-    offenders = pipeline.query_repeat_offenders()
+    offenders = _safe_call("query_repeat_offenders")
 
     if offenders:
         df_off = pd.DataFrame(offenders)
@@ -267,7 +293,7 @@ with t5:
 
 with t6:
     st.subheader("Daily AI Enforcement Recommendation")
-    plan = pipeline.query_enforcement_plan()
+    plan = _safe_call("query_enforcement_plan")
 
     if plan and plan.get("message") != "Plan not generated yet":
         st.success(f"Plan Generated for: **{plan.get('date', datetime.today().strftime('%Y-%m-%d'))}**")
@@ -289,7 +315,7 @@ with t7:
         search_type = c2.selectbox("Violation Type", ["All", "helmet", "triple_riding", "wrong_side", "red_light", "illegal_parking", "seatbelt"])
         search_btn = st.form_submit_button("Search Database")
 
-    violations = pipeline.query_violations(
+    violations = _safe_call("query_violations",
         plate=search_plate if search_plate else None,
         violation_type=search_type if search_type != "All" else None,
         limit=100
