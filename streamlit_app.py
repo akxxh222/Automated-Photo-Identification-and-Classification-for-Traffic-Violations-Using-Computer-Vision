@@ -9,24 +9,78 @@ sys.path.insert(0, str(Path(__file__).parent))
 import tempfile
 from datetime import datetime
 import subprocess
+import urllib.request
+import struct
+import tarfile
+import ctypes
 import logging
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-subprocess.run(
-    [sys.executable, "-m", "pip", "install", "opencv-python-headless", "--quiet", "--force-reinstall", "--no-deps"],
-    capture_output=True, timeout=120
-)
+def _ensure_cv2():
+    lib_dir = os.path.join(tempfile.gettempdir(), "gridlock_libs")
+    def _add_lib_paths():
+        for root, _dirs, files in os.walk(lib_dir):
+            if any(f.endswith(".so") or ".so." in f for f in files):
+                os.environ["LD_LIBRARY_PATH"] = root + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+    def _dlopen_so(name):
+        try:
+            return ctypes.CDLL(name, ctypes.RTLD_GLOBAL)
+        except Exception:
+            return None
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "opencv-python-headless", "--quiet", "--force-reinstall", "--no-deps"],
+        capture_output=True, timeout=120
+    )
+    for _ in range(2):
+        if "cv2" in sys.modules:
+            del sys.modules["cv2"]
+        try:
+            import cv2 as _cv2
+            return _cv2, True
+        except Exception as e:
+            err = str(e)
+            if "libgthread" in err or "libglib" in err or "cannot open shared object" in err:
+                if not os.path.isdir(lib_dir) or not list(os.listdir(lib_dir)):
+                    try:
+                        os.makedirs(lib_dir, exist_ok=True)
+                        base = "http://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0"
+                        debs = [
+                            f"{base}/libglib2.0-0_2.72.4-0ubuntu2.2_amd64.deb",
+                            f"{base}/libglib2.0-0_2.72.4-0ubuntu2_amd64.deb",
+                            f"{base}/libglib2.0-0_2.72.4-0ubuntu1_amd64.deb",
+                        ]
+                        for url in debs:
+                            try:
+                                req = urllib.request.Request(url, headers={"User-Agent": "Gridlock/1.0"})
+                                data = urllib.request.urlopen(req, timeout=30).read()
+                                if data.startswith(b"!<arch>\n"):
+                                    pos = 8
+                                    while pos < len(data):
+                                        if pos + 60 > len(data): break
+                                        size = int(data[pos+48:pos+58].strip())
+                                        name = data[pos:pos+16].rstrip(b" ").rstrip(b"/").decode()
+                                        pos += 60
+                                        if name in ("data.tar.xz", "data.tar.gz", "data.tar.bz2"):
+                                            tf = tarfile.open(fileobj=io.BytesIO(data[pos:pos+size]))
+                                            tf.extractall(lib_dir)
+                                            tf.close()
+                                            break
+                                        pos += (size + 1) & ~1
+                                    _add_lib_paths()
+                                    break
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+                _add_lib_paths()
+                _dlopen_so("libglib-2.0.so.0")
+                continue
+            return None, False
+    return None, False
 
-_HAS_CV2 = False
-try:
-    if "cv2" in sys.modules:
-        del sys.modules["cv2"]
-    import cv2
-    _HAS_CV2 = True
-except Exception:
-    cv2 = None
+cv2, _HAS_CV2 = _ensure_cv2()
 
 try:
     from PIL import Image, ImageDraw
