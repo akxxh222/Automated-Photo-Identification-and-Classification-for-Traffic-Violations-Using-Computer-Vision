@@ -9,9 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import tempfile
 from datetime import datetime
 import subprocess
-import urllib.request
-import struct
 import tarfile
+import shutil
 import ctypes
 import logging
 
@@ -28,75 +27,46 @@ def _ensure_cv2():
         try:
             import cv2 as _cv2
             return _cv2, True
-        except Exception as _e:
-            return None, False, str(_e)
-    cv2, ok = _try_import()[:2]
+        except Exception:
+            return None, False
+    cv2, ok = _try_import()
     if ok: return cv2, True
-    err = _try_import()[2]
-    if "libgthread" not in err and "cannot open shared object" not in err:
-        return None, False
-    try:
-        out = subprocess.run(["/sbin/ldconfig", "-p"], capture_output=True, text=True, timeout=15)
-        glib_path = None
-        for line in out.stdout.splitlines():
-            if "libglib-2.0.so.0" in line and "=>" in line:
-                glib_path = line.split("=>", 1)[1].strip()
-                break
-        if glib_path and os.path.exists(glib_path):
-            lib_d = os.path.dirname(glib_path)
-            if os.access(lib_d, os.W_OK):
-                gthread_path = os.path.join(lib_d, "libgthread-2.0.so.0")
-                if not os.path.exists(gthread_path):
-                    os.symlink(glib_path, gthread_path)
-                cv2, ok = _try_import()[:2]
-                if ok: return cv2, True
-            tgt = os.path.join(tempfile.gettempdir(), "glib_links")
-            os.makedirs(tgt, exist_ok=True)
-            link = os.path.join(tgt, "libgthread-2.0.so.0")
-            if not os.path.exists(link):
-                os.symlink(glib_path, link)
-            os.environ["LD_LIBRARY_PATH"] = tgt + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
-            cv2, ok = _try_import()[:2]
-            if ok: return cv2, True
-    except Exception:
-        pass
-    try:
-        tgt2 = os.path.join(tempfile.gettempdir(), "glib_libs")
-        os.makedirs(tgt2, exist_ok=True)
-        urls = [
-            "http://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0/libglib2.0-0t64_2.80.0-6ubuntu3.8_amd64.deb",
-            "http://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0/libglib2.0-0_2.72.4-0ubuntu2.9_amd64.deb",
-        ]
-        for url in urls:
-            try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Gridlock/1.0"})
-                data = urllib.request.urlopen(req, timeout=30).read()
-                if not data.startswith(b"!<arch>\n"): continue
-                pos = 8
-                while pos < len(data):
-                    if pos + 60 > len(data): break
-                    size = int(data[pos+48:pos+58].strip())
-                    name = data[pos:pos+16].rstrip(b" ").rstrip(b"/").decode()
-                    pos += 60
-                    if name in ("data.tar.xz", "data.tar.gz", "data.tar.bz2"):
-                        tf = tarfile.open(fileobj=io.BytesIO(data[pos:pos+size]))
-                        tf.extractall(tgt2)
-                        tf.close()
-                        break
-                    pos += (size + 1) & ~1
-                lib_dirs = set()
-                for root, _dirs, files in os.walk(tgt2):
-                    for f in files:
-                        if "libgthread" in f and (".so" in f or f.endswith(".so")):
-                            lib_dirs.add(root)
-                for d in lib_dirs:
-                    os.environ["LD_LIBRARY_PATH"] = d + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
-                cv2, ok = _try_import()[:2]
-                if ok: return cv2, True
-            except Exception:
+    for _ in range(2):
+        if "cv2" in sys.modules: del sys.modules["cv2"]
+        try:
+            import cv2 as _cv2
+            return _cv2, True
+        except Exception:
+            break
+    tarball = os.path.join(Path(__file__).parent, "streamlit_app_files", "glib_libs.tar.gz")
+    if os.path.exists(tarball):
+        lib_dir = os.path.join(tempfile.gettempdir(), "glib_so")
+        if not os.path.isdir(lib_dir) or not os.listdir(lib_dir):
+            with tarfile.open(tarball, "r:gz") as tar:
+                tar.extractall(lib_dir)
+        for fname in os.listdir(lib_dir):
+            fpath = os.path.join(lib_dir, fname)
+            base = fname.rsplit(".", 2)[0]
+            if base.endswith(".so.0") and not base.endswith(".0"):
                 continue
-    except Exception:
-        pass
+            if ".so.0" in fname and not fname.endswith(".so.0"):
+                simple = base.rsplit(".", 1)[0] if "." in base else base
+                link = os.path.join(lib_dir, simple + ".so.0")
+                if not os.path.exists(link):
+                    try: os.symlink(fname, link)
+                    except: shutil.copy2(fpath, link)
+        os.environ["LD_LIBRARY_PATH"] = lib_dir + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+        glib = os.path.join(lib_dir, "libglib-2.0.so.0")
+        if os.path.exists(glib):
+            try: ctypes.CDLL(glib, ctypes.RTLD_GLOBAL)
+            except: pass
+        for _ in range(2):
+            if "cv2" in sys.modules: del sys.modules["cv2"]
+            try:
+                import cv2 as _cv2
+                return _cv2, True
+            except Exception:
+                break
     return None, False
 
 cv2, _HAS_CV2 = _ensure_cv2()
