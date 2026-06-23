@@ -7,38 +7,28 @@ import io
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import tempfile
-from datetime import datetime, timedelta
-import random
+from datetime import datetime
 import logging
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-_HAS_CV2 = False
 try:
-    import cv2
-    _HAS_CV2 = True
-except Exception:
-    cv2 = None
-
-_HAS_PIL = False
-try:
-    from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
+    from PIL import Image, ImageDraw
     _HAS_PIL = True
 except ImportError:
     Image = None
+    _HAS_PIL = False
 
-_HAS_PD = False
 try:
     import pandas as pd
     _HAS_PD = True
 except ImportError:
     pd = None
+    _HAS_PD = False
 
-_HAS_NP = False
 try:
     import numpy as np
-    _HAS_NP = True
 except ImportError:
     np = None
 
@@ -69,55 +59,15 @@ def safe_call(method, *a, **kw):
         logger.warning("%s failed: %s", method, e)
         return None
 
-def analyze_with_pil(image_bytes: bytes) -> dict:
-    if not _HAS_PIL or not Image:
-        return {"processed_violations": 0, "events": [], "junction_risk": {"score": 0.0, "tier": "LOW"}, "demo": True}
-    try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        w, h = img.size
-        gray = img.convert("L")
-        edges = gray.filter(ImageFilter.FIND_EDGES)
-        edge_arr = list(edges.getdata()) if _HAS_NP else None
-        if _HAS_NP:
-            edge_pixels = sum(1 for p in edge_arr if p > 50)
-            total_pixels = w * h
-            edge_ratio = edge_pixels / total_pixels
-            r_channel = np.array(img)[:, :, 0]
-            red_pixels = int(np.sum(r_channel > 200))
-        else:
-            edge_ratio = 0.1
-            red_pixels = 0
-
-        events = []
-        if edge_ratio > 0.08:
-            events.append({"violation_type": "helmet", "confidence": 0.72 + min(edge_ratio * 2, 0.2), "plate_text": "KA01AB1234", "fine_amount": 1000, "evidence_path": None, "summary": "No Helmet Detected"})
-            events.append({"violation_type": "triple_riding", "confidence": 0.68, "plate_text": "KA02CD5678", "fine_amount": 1500, "evidence_path": None, "summary": "Triple Riding Detected"})
-        if red_pixels > 500:
-            events.append({"violation_type": "red_light", "confidence": 0.85, "plate_text": "KA03EF9012", "fine_amount": 2000, "evidence_path": None, "summary": "Red Light Violation"})
-
-        jr_score = min(edge_ratio * 20 + (red_pixels / total_pixels) * 5, 10.0)
-        tier = "CRITICAL" if jr_score >= 8 else "HIGH" if jr_score >= 5 else "MEDIUM" if jr_score >= 2 else "LOW"
-        return {"processed_violations": len(events), "events": events, "junction_risk": {"score": round(jr_score, 1), "tier": tier}, "demo": True}
-    except Exception as e:
-        logger.warning("PIL analysis failed: %s", e)
-        return {"processed_violations": 0, "events": [], "junction_risk": {"score": 0.0, "tier": "LOW"}, "demo": True}
-
-_DEMO_PLATES = ["KA01AB1234", "KA02CD5678", "KA03EF9012", "KA04GH3456", "KA05IJ7890"]
-def demo_violations(limit=12):
-    if not _HAS_PD:
-        return []
-    data = []
-    for i in range(min(limit, 10)):
-        data.append({"id": i, "timestamp": (datetime.now() - timedelta(minutes=i*15)).isoformat(), "plate_text": _DEMO_PLATES[i % 5], "plate_confidence": 0.85 + (i % 10) * 0.01, "violation_type": ["helmet", "triple_riding", "wrong_side", "red_light", "illegal_parking", "seatbelt"][i % 6], "violation_confidence": 0.72 + (i % 8) * 0.02, "camera_id": f"CAM_00{i%2+1}", "junction_id": f"J00{i%2+1}", "latitude": 12.97 + (i * 0.003), "longitude": 77.59 + (i * 0.002), "fine_amount": [500, 1000, 1500, 2000][i % 4], "is_valid_plate": i % 3 != 0})
-    return data
+_pipeline_active = pipeline is not None
 
 st.sidebar.title("Gridlock AI Command Center")
 st.sidebar.selectbox("Camera", ["All", "CAM_001", "CAM_002"])
 st.sidebar.checkbox("Auto-Refresh (Live Feed)", value=False)
 
-_is_demo = pipeline is None
-if _is_demo:
-    st.sidebar.warning("⚠️ Cloud Demo Mode — Full pipeline runs locally via Docker")
+if not _pipeline_active:
+    st.sidebar.error("Pipeline unavailable: " + (_load_error or "unknown"))
+    st.sidebar.info("Run locally via Docker:\n`docker build -f Docker/Dockerfile -t gridlock-ai . && docker run -p 8000:8501 gridlock-ai`")
 
 st.title("Traffic Enforcement & Risk Intelligence Platform")
 st.markdown("Real-time monitoring, AI predictive analytics, and automated ticketing engine.")
@@ -137,12 +87,9 @@ with t1:
             if _HAS_PIL and Image:
                 st.image(Image.open(io.BytesIO(data)), caption="Uploaded", use_container_width=True)
             with st.spinner("Analyzing..."):
-                if pipeline is not None:
-                    r = safe_call("process_image", data, camera_id="CAM_001")
-                else:
-                    r = analyze_with_pil(data)
+                r = safe_call("process_image", data, camera_id="CAM_001")
                 if r and r.get("events"):
-                    st.success(f"Detected {len(r['events'])} violation(s)" + (" (demo)" if r.get("demo") else ""))
+                    st.success(f"Detected {len(r['events'])} violation(s)")
                     if _HAS_PD:
                         st.dataframe(pd.DataFrame([
                             {"Type": e.get("violation_type","N/A"), "Confidence": f"{e.get('confidence',0):.0%}", "Plate": e.get("plate_text","N/A"), "Fine": f"₹{e.get('fine_amount',0)}"}
@@ -153,9 +100,8 @@ with t1:
                 else:
                     st.info("No violations detected.")
     elif mode == "Upload Video":
-        if not _HAS_CV2:
-            st.warning("OpenCV not available on this server — video upload disabled in cloud mode.")
-        else:
+        try:
+            import cv2
             f = st.file_uploader("Choose a video...", type=["mp4", "avi", "mov", "mkv"])
             if f:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
@@ -180,6 +126,8 @@ with t1:
                 st.success(f"Processed {fi} frames — {len(vs)} violation(s)")
                 if vs and _HAS_PD:
                     st.dataframe(pd.DataFrame(vs), hide_index=True, use_container_width=True)
+        except ImportError:
+            st.warning("OpenCV not available on this server — video upload disabled.")
     else:
         st.session_state.setdefault("frame_counter",0)
         st.session_state.frame_counter += 1
@@ -188,21 +136,19 @@ with t1:
             d = ImageDraw.Draw(img)
             d.text((10,10), f"LIVE - {datetime.now():%H:%M:%S}", fill=(255,255,255))
             d.text((10,50), f"Frame #{st.session_state.frame_counter}", fill=(200,200,200))
-            if _is_demo:
-                d.text((10,90), "DEMO MODE", fill=(255,200,0))
             st.image(img, use_container_width=True)
-        vs = safe_call("query_violations", limit=5) if pipeline else None
-        if vs is None and _is_demo:
-            vs = demo_violations(limit=5)
+        vs = safe_call("query_violations", limit=5)
         if vs and _HAS_PD:
             st.markdown("**Real-Time Violation Log**")
             st.dataframe(pd.DataFrame(vs) if isinstance(vs, list) else pd.DataFrame([vs]), hide_index=True, use_container_width=True)
-        elif vs is None or (isinstance(vs, list) and len(vs) == 0):
+        elif not _pipeline_active:
+            st.info("Pipeline not connected — no data available.")
+        else:
             st.info("No violations logged recently.")
 
 with t2:
     st.subheader("City-Wide Junction Risk Intelligence")
-    if not _is_demo:
+    if _pipeline_active:
         try:
             import folium; from streamlit_folium import st_folium
             m = folium.Map(location=[12.9716,77.5946], zoom_start=12, tiles="CartoDB dark_matter")
@@ -213,67 +159,64 @@ with t2:
                 folium.CircleMarker(location=coords, radius=10, color=clr, fill=True, fill_color=clr, fill_opacity=0.7, popup=pop).add_to(m)
             col1,_ = st.columns([3,1])
             with col1: st_folium(m, width=800, height=450)
-        except ImportError: st.info("Map requires folium.")
+        except ImportError: st.info("Map requires folium/streamlit-folium.")
     else:
-        st.info("Risk map available with full pipeline — see Docker deployment.")
+        st.info("Pipeline not connected — run locally via Docker.")
 
 with t3:
     st.subheader("Violation Density Hotspots")
-    hs = None
-    if pipeline: hs = safe_call("query_hotspots")
-    if not hs and _is_demo:
-        hs = [{"cluster_id":i,"centroid":{"lat":12.97+(i*0.005),"lon":77.59+(i*0.003)},"violation_count":random.randint(3,15),"dominant_violation":["helmet","triple_riding","red_light","seatbelt"][i%4]} for i in range(1,4)]
-    if hs:
-        try:
-            import folium; from folium.plugins import HeatMap; from streamlit_folium import st_folium
-            col1,_ = st.columns([2,1])
-            with col1:
-                m2 = folium.Map(location=[12.9716,77.5946], zoom_start=12)
-                HeatMap([[h["centroid"]["lat"],h["centroid"]["lon"],h["violation_count"]] for h in hs]).add_to(m2)
-                st_folium(m2, width=700, height=400)
-        except ImportError: st.info("Charts require folium/altair.")
-    else: st.info("No hotspot data.")
+    if _pipeline_active:
+        hs = safe_call("query_hotspots")
+        if hs:
+            try:
+                import folium; from folium.plugins import HeatMap; from streamlit_folium import st_folium
+                col1,_ = st.columns([2,1])
+                with col1:
+                    m2 = folium.Map(location=[12.9716,77.5946], zoom_start=12)
+                    HeatMap([[h["centroid"]["lat"],h["centroid"]["lon"],h["violation_count"]] for h in hs]).add_to(m2)
+                    st_folium(m2, width=700, height=400)
+            except ImportError: st.info("Charts require folium/altair.")
+        else: st.info("No hotspot data.")
+    else: st.info("Pipeline not connected — run locally via Docker.")
 
 with t4:
     st.subheader("Predictive Analytics (Next 24 Hours)")
-    jid = st.selectbox("Junction", ["J001","J002"])
-    fr = safe_call("query_forecast", jid, hours=24) if pipeline else None
-    if not fr and _is_demo:
-        import random
-        base = datetime.now().replace(minute=0, second=0, microsecond=0)
-        fr = {"junction_id":jid,"hours":24,"forecast":[{"timestamp":(base+timedelta(hours=h)).isoformat(),"predicted_violations":max(0,int(np.random.normal(8,3))),"confidence_interval":{"lower":max(0,int(np.random.normal(5,2))),"upper":int(np.random.normal(12,4))},"event_flag":"⏰ Peak" if h in [8,9,17,18] else None} for h in range(24)],"model_status":"demo"}
-    fd = fr.get("forecast") if isinstance(fr,dict) else fr
-    if fd:
-        try:
-            import altair as alt
-            df = pd.DataFrame(fd)
-            if "timestamp" in df.columns: df["timestamp"] = pd.to_datetime(df["timestamp"])
-            st.altair_chart(alt.Chart(df).mark_line(color="cyan").encode(x="timestamp:T",y="predicted_violations:Q",tooltip=["timestamp","predicted_violations"]) + alt.Chart(df[df["event_flag"].notnull()]).mark_rule(color="red",strokeDash=[3,3]).encode(x="timestamp:T"), use_container_width=True)
-        except ImportError: st.info("Charts require altair.")
-    else: st.info("No forecast data.")
+    if _pipeline_active:
+        jid = st.selectbox("Junction", ["J001","J002"])
+        fr = safe_call("query_forecast", jid, hours=24)
+        fd = fr.get("forecast") if isinstance(fr,dict) else fr
+        if fd:
+            try:
+                import altair as alt
+                df = pd.DataFrame(fd)
+                if "timestamp" in df.columns: df["timestamp"] = pd.to_datetime(df["timestamp"])
+                st.altair_chart(alt.Chart(df).mark_line(color="cyan").encode(x="timestamp:T",y="predicted_violations:Q",tooltip=["timestamp","predicted_violations"]) + alt.Chart(df[df["event_flag"].notnull()]).mark_rule(color="red",strokeDash=[3,3]).encode(x="timestamp:T"), use_container_width=True)
+            except ImportError: st.info("Charts require altair.")
+        else: st.info("No forecast data.")
+    else: st.info("Pipeline not connected — run locally via Docker.")
 
 with t5:
     st.subheader("Repeat Offender Registry")
-    offs = safe_call("query_repeat_offenders") if pipeline else None
-    if not offs and _is_demo:
-        offs = [{"plate_text":p,"violation_count":random.randint(2,8),"risk_tier":random.choice(["HIGH RISK","MEDIUM RISK"]),"last_seen":(datetime.now()-timedelta(hours=random.randint(1,48))).isoformat()} for p in _DEMO_PLATES[:3]]
-    if offs and _HAS_PD:
-        df = pd.DataFrame(offs)
-        def ht(v): return f'background-color: {"#ff4b4b" if v=="HIGH RISK" else "#ffa500"}'
-        st.dataframe(df.style.map(ht, subset=["risk_tier"]), use_container_width=True)
-    else: st.info("No repeat offenders found.")
+    if _pipeline_active:
+        offs = safe_call("query_repeat_offenders")
+        if offs and _HAS_PD:
+            df = pd.DataFrame(offs)
+            def ht(v): return f'background-color: {"#ff4b4b" if v=="HIGH RISK" else "#ffa500"}'
+            st.dataframe(df.style.map(ht, subset=["risk_tier"]), use_container_width=True)
+        else: st.info("No repeat offenders found.")
+    else: st.info("Pipeline not connected — run locally via Docker.")
 
 with t6:
     st.subheader("Daily AI Enforcement Plan")
-    plan = safe_call("query_enforcement_plan") if pipeline else None
-    if not plan and _is_demo:
-        plan = {"date":datetime.today().strftime("%Y-%m-%d"),"total_officers_needed":random.randint(8,15),"recommended_allocations":[{"junction":"J001","officers":random.randint(3,6),"priority":"HIGH"},{"junction":"J002","officers":random.randint(2,4),"priority":"MEDIUM"}]}
-    if plan and plan.get("message") != "Plan not generated yet":
-        st.success(f"Plan for **{plan.get('date', datetime.today().strftime('%Y-%m-%d'))}**")
-        st.metric("Total Officers Required", plan.get("total_officers_needed","N/A"))
-        if "recommended_allocations" in plan and _HAS_PD:
-            st.table(pd.DataFrame(plan["recommended_allocations"]))
-    else: st.info("No enforcement plan yet.")
+    if _pipeline_active:
+        plan = safe_call("query_enforcement_plan")
+        if plan and plan.get("message") != "Plan not generated yet":
+            st.success(f"Plan for **{plan.get('date', datetime.today().strftime('%Y-%m-%d'))}**")
+            st.metric("Total Officers Required", plan.get("total_officers_needed","N/A"))
+            if "recommended_allocations" in plan and _HAS_PD:
+                st.table(pd.DataFrame(plan["recommended_allocations"]))
+        else: st.info("No enforcement plan yet.")
+    else: st.info("Pipeline not connected — run locally via Docker.")
 
 with t7:
     st.subheader("Historical Violation Database")
@@ -282,12 +225,13 @@ with t7:
         sp = c1.text_input("License Plate")
         stp = c2.selectbox("Violation Type", ["All","helmet","triple_riding","wrong_side","red_light","illegal_parking","seatbelt"])
         sb = st.form_submit_button("Search")
-    vs = safe_call("query_violations", plate=sp or None, violation_type=stp if stp!="All" else None, limit=100) if pipeline else None
-    if not vs and _is_demo:
-        vs = demo_violations(limit=100)
+    vs = safe_call("query_violations", plate=sp or None, violation_type=stp if stp!="All" else None, limit=100) if _pipeline_active else None
     if vs and _HAS_PD:
         df = pd.DataFrame(vs)
         cols = [c for c in ["timestamp","plate_text","violation_type","camera_id","fine_amount","is_valid_plate"] if c in df.columns]
         st.dataframe(df[cols], use_container_width=True)
         st.download_button("Export CSV", df.to_csv(index=False).encode("utf-8"), f"violations_{datetime.now():%Y%m%d}.csv")
-    else: st.info("No violations match your search criteria.")
+    elif _pipeline_active:
+        st.info("No violations match your search criteria.")
+    else:
+        st.info("Pipeline not connected — run locally via Docker.")
