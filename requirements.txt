@@ -6,3 +6,11 @@ folium
 streamlit-folium
 altair
 requests
+sqlalchemy
+scikit-learn
+apscheduler
+ultralytics
+fastapi
+uvicorn
+pydantic
+python-multipart
