@@ -1,12 +1,2 @@
-numpy
-opencv-python-headless
-Pillow
 streamlit
-folium
-streamlit-folium
-altair
-pandas
 requests
-protobuf
-pytz
-sqlalchemy
