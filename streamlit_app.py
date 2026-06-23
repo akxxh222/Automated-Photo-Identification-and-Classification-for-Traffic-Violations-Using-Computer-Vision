@@ -17,11 +17,16 @@ import logging
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
+_CV2_FIXED = False
 def _ensure_cv2():
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "opencv-python-headless", "--quiet", "--force-reinstall", "--no-deps"],
-        capture_output=True, timeout=120
-    )
+    global _CV2_FIXED
+    if _CV2_FIXED:
+        if "cv2" in sys.modules: del sys.modules["cv2"]
+        try:
+            import cv2 as _cv2
+            return _cv2, True
+        except Exception:
+            return None, False
     def _try_import():
         if "cv2" in sys.modules: del sys.modules["cv2"]
         try:
@@ -48,7 +53,17 @@ def _ensure_cv2():
                     except: shutil.copy2(fpath, link)
         return True
     cv2, ok = _try_import()
-    if ok: return cv2, True
+    if ok:
+        _CV2_FIXED = True
+        return cv2, True
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "opencv-python-headless", "--quiet", "--force-reinstall", "--no-deps"],
+        capture_output=True, timeout=120
+    )
+    cv2, ok = _try_import()
+    if ok:
+        _CV2_FIXED = True
+        return cv2, True
     lib_dir = os.path.join(tempfile.gettempdir(), "glib_so")
     if not _extract_so(lib_dir):
         return None, False
@@ -65,10 +80,17 @@ def _ensure_cv2():
                 break
     for _ in range(3):
         cv2, ok = _try_import()
-        if ok: return cv2, True
+        if ok:
+            _CV2_FIXED = True
+            return cv2, True
     return None, False
 
-cv2, _HAS_CV2 = _ensure_cv2()
+try:
+    cv2, _HAS_CV2 = _ensure_cv2()
+except Exception as e:
+    logger.warning("_ensure_cv2 crashed: %s", e)
+    cv2 = None
+    _HAS_CV2 = False
 
 try:
     from PIL import Image, ImageDraw
