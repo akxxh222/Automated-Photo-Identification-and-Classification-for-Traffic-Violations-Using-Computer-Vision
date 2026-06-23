@@ -43,12 +43,13 @@ _load_error = None
 try:
     from app.pipeline_runner import get_pipeline as _gp
     pipeline = _gp()
+    if not pipeline.load():
+        _load_error = pipeline._load_err
+        pipeline = None
 except Exception as e:
     _load_error = str(e)
-    logger.warning("Pipeline not loaded: %s", e)
-
-if pipeline is not None and not getattr(pipeline, '_loaded', False):
     pipeline = None
+    logger.warning("Pipeline not loaded: %s", e)
 
 def safe_call(method, *a, **kw):
     if pipeline is None:
