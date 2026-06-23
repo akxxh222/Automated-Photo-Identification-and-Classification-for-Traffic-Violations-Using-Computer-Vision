@@ -69,6 +69,21 @@ st.sidebar.title("Gridlock AI Filters")
 st.sidebar.selectbox("Camera", ["All", "CAM_001", "CAM_002"])
 st.sidebar.checkbox("Auto-Refresh (Live Feed)", value=False)
 
+_model_status = "NOT LOADED"
+if pipeline is not None:
+    _ps = getattr(pipeline, '_loaded', False)
+    _model_status = f"LOADED={_ps}"
+    if _ps:
+        _ps2 = getattr(pipeline, 'pipeline', None)
+        if _ps2:
+            _ps3 = getattr(_ps2, 'loaded', False)
+            _model_status += f" | MLPipeline.loaded={_ps3}"
+_model_files = [f for f in ["models/vehicle_detector.pt","models/helmet_detector.pt","models/triple_riding_detector.pt","models/plate_detector.pt"] if os.path.exists(f)]
+_model_status += f" | models_found={len(_model_files)}/4"
+st.sidebar.caption(f"Status: {_model_status}")
+if _load_error:
+    st.sidebar.error(f"Pipeline error: {_load_error[:200]}")
+
 st.title("Traffic Enforcement & Risk Intelligence Platform")
 st.markdown("Real-time monitoring, AI predictive analytics, and automated ticketing engine.")
 
