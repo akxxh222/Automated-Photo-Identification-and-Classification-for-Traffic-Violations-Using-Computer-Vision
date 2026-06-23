@@ -23,11 +23,16 @@ st.set_page_config(page_title="Gridlock AI Command Center", layout="wide", page_
 
 pipeline = get_pipeline()
 
+if "violations_cache" not in st.session_state:
+    st.session_state.violations_cache = []
+if "frame_counter" not in st.session_state:
+    st.session_state.frame_counter = 0
+if "last_violation_time" not in st.session_state:
+    st.session_state.last_violation_time = time.time()
+
 st.sidebar.title("Gridlock AI Filters")
 selected_cam = st.sidebar.selectbox("Camera Selector", ["All", "CAM_001", "CAM_002"])
 date_range = st.sidebar.date_input("Date Range", [datetime.today() - timedelta(days=1), datetime.today()])
-auto_refresh = st.sidebar.checkbox("Auto-Refresh (Live Feed)", value=False)
-
 st.title("Traffic Enforcement & Risk Intelligence Platform")
 st.markdown("Real-time monitoring, AI predictive analytics, and automated ticketing engine.")
 
@@ -132,15 +137,24 @@ with t1:
 
         with c1:
             st.markdown("**Simulated Live Video**")
+            st.session_state.frame_counter += 1
             dummy_frame = np.random.randint(50, 200, (360, 640, 3), dtype=np.uint8)
             cv2.putText(dummy_frame, f"LIVE - {datetime.now().strftime('%H:%M:%S')}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(dummy_frame, f"Frame #{st.session_state.frame_counter}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
             st.image(dummy_frame, channels="BGR", use_container_width=True)
 
         with c2:
             st.markdown("**Real-Time Violation Log**")
             violations = pipeline.query_violations(limit=5)
+            now = time.time()
             if violations:
+                st.session_state.violations_cache = violations
+                st.session_state.last_violation_time = now
                 df_log = pd.DataFrame(violations)[['timestamp', 'plate_text', 'violation_type', 'camera_id']]
+                st.dataframe(df_log, hide_index=True, use_container_width=True)
+            elif st.session_state.violations_cache and (now - st.session_state.last_violation_time) < 30:
+                st.caption("Showing cached violations")
+                df_log = pd.DataFrame(st.session_state.violations_cache)[['timestamp', 'plate_text', 'violation_type', 'camera_id']]
                 st.dataframe(df_log, hide_index=True, use_container_width=True)
             else:
                 st.info("No violations logged recently.")
@@ -284,6 +298,4 @@ with t7:
     else:
         st.info("No violations match your search criteria.")
 
-if auto_refresh and mode == "Simulated Feed":
-    time.sleep(2)
-    st.rerun()
+

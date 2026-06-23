@@ -54,15 +54,25 @@ class StandalonePipeline:
             logger.warning("Pipeline load failed (non-fatal for dashboard): %s", e)
             return False
 
-    def process_image(self, image_bytes: bytes, camera_id: str = "CAM_001") -> Dict[str, Any]:
-        if not self._loaded and not self.load():
+    def __init__(self, db_path: str = "gridlock.db"):
+        self.db_path = db_path
+        self._set_db_url()
+        self._loaded = False
+        self.pipeline = None
+        self.risk_engine = None
+        self.forecaster = None
+        self.SessionLocal = None
+        self._frame_counter = 0
+
+    def _set_db_url(self):
             return {"processed_violations": 0, "events": [], "junction_risk": {"score": 0.0, "tier": "LOW"}}
         try:
             pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
             np_arr = np.array(pil_img)
             frame = cv2.cvtColor(np_arr, cv2.COLOR_RGB2BGR)
 
-            proc_frame, meta = self.pipeline.preprocessor.process_frame(frame, frame_id=0, source=camera_id)
+            self._frame_counter += 1
+            proc_frame, meta = self.pipeline.preprocessor.process_frame(frame, frame_id=self._frame_counter, source=camera_id)
             tracks = self.pipeline.tracker.process_frame(proc_frame)
             violations = self.pipeline.aggregator.detect(proc_frame, tracks, camera_id)
             plates = self.pipeline.lpr.process_frame(proc_frame)
