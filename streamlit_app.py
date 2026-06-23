@@ -4,6 +4,8 @@ st.set_page_config(page_title="Gridlock AI Command Center", layout="wide", page_
 import os
 import sys
 import io
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
 import tempfile
 from datetime import datetime
 import logging
@@ -40,10 +42,12 @@ except ImportError:
     np = None
 
 pipeline = None
+_load_error = None
 try:
     from app.pipeline_runner import get_pipeline as _gp
     pipeline = _gp()
 except Exception as e:
+    _load_error = str(e)
     logger.warning("Pipeline not loaded: %s", e)
 
 def safe_call(method, *a, **kw):
@@ -58,6 +62,11 @@ def safe_call(method, *a, **kw):
 st.sidebar.title("Gridlock AI Filters")
 st.sidebar.selectbox("Camera", ["All", "CAM_001", "CAM_002"])
 st.sidebar.checkbox("Auto-Refresh (Live Feed)", value=False)
+with st.sidebar.expander("Debug Info"):
+    st.write(f"Pipeline loaded: {pipeline is not None and pipeline._loaded}")
+    st.write(f"Pipeline object: {pipeline}")
+    if _load_error:
+        st.error(f"Load error: {_load_error}")
 st.title("Traffic Enforcement & Risk Intelligence Platform")
 st.markdown("Real-time monitoring, AI predictive analytics, and automated ticketing engine.")
 
