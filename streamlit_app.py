@@ -8,10 +8,25 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import tempfile
 from datetime import datetime
+import subprocess
 import logging
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "opencv-python-headless", "--quiet", "--force-reinstall", "--no-deps"],
+    capture_output=True, timeout=120
+)
+
+_HAS_CV2 = False
+try:
+    if "cv2" in sys.modules:
+        del sys.modules["cv2"]
+    import cv2
+    _HAS_CV2 = True
+except Exception:
+    cv2 = None
 
 try:
     from PIL import Image, ImageDraw
