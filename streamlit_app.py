@@ -64,8 +64,8 @@ def _ensure_cv2():
         tgt2 = os.path.join(tempfile.gettempdir(), "glib_libs")
         os.makedirs(tgt2, exist_ok=True)
         urls = [
-            "http://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0/libglib2.0-0_2.80.0-6_amd64.deb",
-            "http://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0/libglib2.0-0_2.72.4-0ubuntu2.2_amd64.deb",
+            "http://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0/libglib2.0-0t64_2.80.0-6ubuntu3.8_amd64.deb",
+            "http://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0/libglib2.0-0_2.72.4-0ubuntu2.9_amd64.deb",
         ]
         for url in urls:
             try:
