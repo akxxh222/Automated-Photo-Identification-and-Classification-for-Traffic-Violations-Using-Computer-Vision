@@ -4,14 +4,6 @@ import logging
 from datetime import date
 from typing import Optional, List, Dict, Any
 
-import numpy as np
-from PIL import Image
-
-try:
-    import cv2
-except ImportError:
-    cv2 = None
-
 logger = logging.getLogger(__name__)
 
 
@@ -63,6 +55,9 @@ class StandalonePipeline:
         if not self._loaded and not self.load():
             return {"processed_violations": 0, "events": [], "junction_risk": {"score": 0.0, "tier": "LOW"}}
         try:
+            from PIL import Image
+            import numpy as np
+            import cv2
             pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
             np_arr = np.array(pil_img)
             frame = cv2.cvtColor(np_arr, cv2.COLOR_RGB2BGR)
