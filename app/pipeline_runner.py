@@ -19,6 +19,7 @@ class StandalonePipeline:
         self.forecaster = None
         self.SessionLocal = None
         self._frame_counter = 0
+        self._load_err = None
 
     def _set_db_url(self):
         os.environ.setdefault("DATABASE_URL", f"sqlite:///./{self.db_path}")
@@ -48,6 +49,7 @@ class StandalonePipeline:
             logger.info("StandalonePipeline fully loaded")
             return True
         except Exception as e:
+            self._load_err = str(e)
             logger.warning("Pipeline load failed (non-fatal for dashboard): %s", e)
             return False
 

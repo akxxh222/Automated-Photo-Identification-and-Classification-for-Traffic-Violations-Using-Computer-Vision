@@ -82,7 +82,9 @@ _model_files = [f for f in ["models/vehicle_detector.pt","models/helmet_detector
 _model_status += f" | models_found={len(_model_files)}/4"
 st.sidebar.caption(f"Status: {_model_status}")
 if _load_error:
-    st.sidebar.error(f"Pipeline error: {_load_error[:200]}")
+    st.sidebar.error(f"Init error: {_load_error[:200]}")
+if pipeline is not None and getattr(pipeline, '_load_err', None):
+    st.sidebar.error(f"load() error: {pipeline._load_err[:300]}")
 
 st.title("Traffic Enforcement & Risk Intelligence Platform")
 st.markdown("Real-time monitoring, AI predictive analytics, and automated ticketing engine.")
