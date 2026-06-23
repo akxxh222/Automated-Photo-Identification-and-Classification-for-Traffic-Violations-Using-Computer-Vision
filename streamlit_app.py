@@ -41,6 +41,27 @@ try:
 except ImportError:
     np = None
 
+import sys as _sys
+import types as _types
+
+class _RealCv2Loader(_types.ModuleType):
+    def __getattr__(self, name):
+        _sys.modules.pop('cv2', None)
+        try:
+            import cv2 as real
+            _sys.modules['cv2'] = real
+            return getattr(real, name)
+        except Exception as exc:
+            _sys.modules['cv2'] = self
+            raise RuntimeError(f"cv2 not available ({exc})")
+
+_sys.modules.setdefault('cv2', _RealCv2Loader('cv2'))
+
+try:
+    import cv2
+except Exception:
+    pass
+
 try:
     from scripts.download_models import main as _download_models
     _download_models()
