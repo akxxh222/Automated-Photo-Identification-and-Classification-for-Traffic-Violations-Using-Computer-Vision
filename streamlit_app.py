@@ -1,2 +1,6 @@
-import streamlit as st
-st.write("hello world")
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from app.app import *
