@@ -45,18 +45,9 @@ try:
 except Exception as e:
     logger.warning("Pipeline not available: %s", e)
 
-# Pre-load pipeline at startup to avoid OOM on first interaction
+# Pre-load pipeline silently at startup
 if pipeline is not None and not pipeline._loaded:
-    with st.spinner("Loading AI models (may take 1-2 min on first run)..."):
-        import time
-        t0 = time.time()
-        loaded = pipeline.load()
-        elapsed = time.time() - t0
-        if loaded:
-            st.success(f"AI models loaded in {elapsed:.0f}s")
-        else:
-            st.warning("Some models failed to load — fallback mode active")
-        time.sleep(1)
+    pipeline.load()
 
 def safe_call(method, *args, **kwargs):
     if pipeline is None:
@@ -89,7 +80,7 @@ with t1:
             try:
                 img_bytes = uploaded_img.read()
                 if Image:
-                    st.image(Image.open(io.BytesIO(img_bytes)), caption="Uploaded Image", width='stretch')
+                    st.image(Image.open(io.BytesIO(img_bytes)), caption="Uploaded Image", use_container_width=True)
                 with st.spinner("Running detection..."):
                     result = safe_call("process_image", img_bytes, camera_id="CAM_001")
                     if result is None:
@@ -102,7 +93,7 @@ with t1:
                             st.dataframe(pd.DataFrame([
                                 {"Type": e.get("violation_type", "N/A"), "Confidence": f"{e.get('confidence', 0):.0%}", "Plate": e.get("plate_text", "N/A")}
                                 for e in result["events"]
-                            ]), hide_index=True, width='stretch')
+                            ]), hide_index=True, use_container_width=True)
                     else:
                         st.info("No violations detected.")
             except Exception as e:
@@ -144,7 +135,7 @@ with t1:
                     os.unlink(tmp_path)
                     st.success(f"Processed {frame_idx} frames — {len(all_violations)} violation(s)")
                     if all_violations and _HAS_PANDAS:
-                        st.dataframe(pd.DataFrame(all_violations), hide_index=True, width='stretch')
+                        st.dataframe(pd.DataFrame(all_violations), hide_index=True, use_container_width=True)
                 except Exception as e:
                     st.error(f"Error processing video: {e}")
                     logger.exception("Video processing error")
@@ -157,13 +148,13 @@ with t1:
             d = ImageDraw.Draw(img)
             d.text((10, 10), f"LIVE - {datetime.now().strftime('%H:%M:%S')}", fill=(255, 255, 255))
             d.text((10, 50), f"Frame #{st.session_state.frame_counter}", fill=(200, 200, 200))
-            st.image(img, width='stretch')
+            st.image(img, use_container_width=True)
         st.caption("Live feed display (simulated)")
 
         violations = safe_call("query_violations", limit=5)
         if violations and _HAS_PANDAS:
             st.markdown("**Recent Violations**")
-            st.dataframe(pd.DataFrame(violations), hide_index=True, width='stretch')
+            st.dataframe(pd.DataFrame(violations), hide_index=True, use_container_width=True)
 
 with t2:
     st.subheader("Risk Map")
@@ -196,7 +187,7 @@ with t7:
         if violations:
             if _HAS_PANDAS:
                 df = pd.DataFrame(violations)
-                st.dataframe(df, hide_index=True, width='stretch')
+                st.dataframe(df, hide_index=True, use_container_width=True)
                 st.download_button("Export CSV", df.to_csv(index=False).encode("utf-8"), f"violations_{datetime.now():%Y%m%d}.csv")
         else:
             st.info("No results.")
