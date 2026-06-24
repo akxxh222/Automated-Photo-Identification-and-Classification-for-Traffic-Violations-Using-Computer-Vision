@@ -40,7 +40,7 @@ except ImportError:
 
 pipeline = None
 try:
-    from pipeline_runner import get_pipeline as _get_pipeline
+    from app.pipeline_runner import get_pipeline as _get_pipeline
     pipeline = _get_pipeline()
 except Exception as e:
     logger.warning("Pipeline not available: %s", e)
