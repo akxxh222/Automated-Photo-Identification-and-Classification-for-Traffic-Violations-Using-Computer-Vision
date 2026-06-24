@@ -87,16 +87,15 @@ with t1:
         uploaded_img = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png", "bmp", "webp"])
         if uploaded_img is not None:
             try:
-                uploaded_img.seek(0)
                 img_bytes = uploaded_img.read()
                 if Image:
                     st.image(Image.open(io.BytesIO(img_bytes)), caption="Uploaded Image", width='stretch')
-                with st.spinner("Processing..."):
+                with st.spinner("Running detection..."):
                     result = safe_call("process_image", img_bytes, camera_id="CAM_001")
                     if result is None:
-                        st.warning("Pipeline not available — models may still be loading.")
+                        st.warning("Pipeline not available.")
                     elif result.get("error"):
-                        st.warning(f"Processing returned: {result['error']}")
+                        st.warning(f"Result: {result['error']}")
                     if result and result.get("events"):
                         st.success(f"Detected {len(result['events'])} violation(s)")
                         if _HAS_PANDAS:
@@ -104,18 +103,11 @@ with t1:
                                 {"Type": e.get("violation_type", "N/A"), "Confidence": f"{e.get('confidence', 0):.0%}", "Plate": e.get("plate_text", "N/A")}
                                 for e in result["events"]
                             ]), hide_index=True, width='stretch')
-                        for ev in result["events"]:
-                            ev_path = ev.get("evidence_path")
-                            if ev_path and os.path.exists(ev_path) and Image:
-                                st.image(Image.open(ev_path), caption=f"Evidence: {ev.get('violation_type', '')}", width='stretch')
-                        jr = result.get("junction_risk", {})
-                        if jr and jr.get("score") is not None:
-                            st.metric("Junction Risk Score", f"{jr['score']:.1f}", jr.get("tier", "N/A"))
                     else:
                         st.info("No violations detected.")
             except Exception as e:
-                st.error(f"Error processing image: {e}")
-                logger.exception("Image processing error")
+                st.error(f"Error: {e}")
+                logger.exception("Process error")
 
     elif mode == "Upload Video":
         if not _HAS_CV2:
