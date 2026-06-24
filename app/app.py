@@ -77,10 +77,18 @@ with t1:
     if mode == "Upload Image":
         uploaded_img = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png", "bmp", "webp"])
         if uploaded_img is not None:
-            try:
-                img_bytes = uploaded_img.read()
-                if Image:
-                    st.image(Image.open(io.BytesIO(img_bytes)), caption="Uploaded Image", use_container_width=True)
+            st.write("File selected:", uploaded_img.name)
+            img_bytes = uploaded_img.read()
+            st.write("File size:", len(img_bytes), "bytes")
+            if Image:
+                try:
+                    pil_img = Image.open(io.BytesIO(img_bytes))
+                    st.image(pil_img, caption="Uploaded Image", use_container_width=True)
+                    st.write("Image displayed OK")
+                except Exception as e:
+                    st.error(f"Image display error: {e}")
+            process = st.button("Run Detection")
+            if process:
                 with st.spinner("Running detection..."):
                     result = safe_call("process_image", img_bytes, camera_id="CAM_001")
                     if result is None:
@@ -96,9 +104,6 @@ with t1:
                             ]), hide_index=True, use_container_width=True)
                     else:
                         st.info("No violations detected.")
-            except Exception as e:
-                st.error(f"Error: {e}")
-                logger.exception("Process error")
 
     elif mode == "Upload Video":
         if not _HAS_CV2:
