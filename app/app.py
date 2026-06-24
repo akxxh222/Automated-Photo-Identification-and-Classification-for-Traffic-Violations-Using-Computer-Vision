@@ -45,6 +45,19 @@ try:
 except Exception as e:
     logger.warning("Pipeline not available: %s", e)
 
+# Pre-load pipeline at startup to avoid OOM on first interaction
+if pipeline is not None and not pipeline._loaded:
+    with st.spinner("Loading AI models (may take 1-2 min on first run)..."):
+        import time
+        t0 = time.time()
+        loaded = pipeline.load()
+        elapsed = time.time() - t0
+        if loaded:
+            st.success(f"AI models loaded in {elapsed:.0f}s")
+        else:
+            st.warning("Some models failed to load — fallback mode active")
+        time.sleep(1)
+
 def safe_call(method, *args, **kwargs):
     if pipeline is None:
         return None
