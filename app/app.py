@@ -38,37 +38,45 @@ try:
 except ImportError:
     np = None
 
-pipeline = None
-try:
-    from app.pipeline_runner import get_pipeline as _get_pipeline
-    pipeline = _get_pipeline()
-except Exception as e:
-    logger.warning("Pipeline not available: %s", e)
+def _init_pipeline():
+    try:
+        from app.pipeline_runner import get_pipeline as _get_pipeline
+        p = _get_pipeline()
+        p.load()
+        return p
+    except Exception as e:
+        logger.warning("Pipeline not available: %s", e)
+        return None
 
-# Pre-load pipeline silently at startup
-if pipeline is not None and not pipeline._loaded:
-    pipeline.load()
-
+# Lazy init — first call loads pipeline
+_pipeline = None
 def safe_call(method, *args, **kwargs):
-    if pipeline is None:
+    global _pipeline
+    if _pipeline is None:
+        _pipeline = _init_pipeline()
+    if _pipeline is None:
         return None
     try:
-        return getattr(pipeline, method)(*args, **kwargs)
+        return getattr(_pipeline, method)(*args, **kwargs)
     except Exception as e:
         logger.warning("Pipeline.%s failed: %s", method, e)
         return None
 
-st.sidebar.title("Gridlock AI")
-selected_cam = st.sidebar.selectbox("Camera", ["All", "CAM_001", "CAM_002"])
-auto_refresh = st.sidebar.checkbox("Auto-Refresh", value=False)
+try:
+    st.sidebar.title("Gridlock AI")
+    selected_cam = st.sidebar.selectbox("Camera", ["All", "CAM_001", "CAM_002"])
+    auto_refresh = st.sidebar.checkbox("Auto-Refresh", value=False)
 
-st.title("Traffic Enforcement & Risk Intelligence Platform")
-st.markdown("Real-time monitoring and analytics.")
+    st.title("Traffic Enforcement & Risk Intelligence Platform")
+    st.markdown("Real-time monitoring and analytics.")
 
-t1, t2, t3, t4, t5, t6, t7 = st.tabs([
-    "Live Feed", "Risk Map", "Hotspot Analysis", "Predicted Violations",
-    "Repeat Offenders", "Enforcement Plan", "Search & Reports"
-])
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs([
+        "Live Feed", "Risk Map", "Hotspot Analysis", "Predicted Violations",
+        "Repeat Offenders", "Enforcement Plan", "Search & Reports"
+    ])
+except Exception as _e:
+    st.error(f"App rendering error: {_e}")
+    st.stop()
 
 with t1:
     st.subheader("Live Feed")
